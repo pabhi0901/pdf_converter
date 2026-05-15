@@ -1,7 +1,7 @@
 const express = require('express');
 const cors = require('cors');
 const multer = require('multer');
-const puppeteer = require('puppeteer-core');
+// Removed top-level puppeteer require due to ESM error
 const libre = require('libreoffice-convert');
 const path = require('path');
 const fs = require('fs');
@@ -18,6 +18,10 @@ const upload = multer({ storage: storage });
 
 // Helper: Convert using Puppeteer (HTML/Text/Images)
 async function convertWithPuppeteer(htmlContent) {
+  // Use dynamic import for ESM compatibility
+  const puppeteerModule = await import('puppeteer-core');
+  const puppeteer = puppeteerModule.default || puppeteerModule;
+
   // Use environment variable, default to Windows Edge for local testing, or Linux Chromium for Docker
   let executablePath = process.env.PUPPETEER_EXECUTABLE_PATH;
   if (!executablePath) {
