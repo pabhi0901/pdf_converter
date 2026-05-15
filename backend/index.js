@@ -10,7 +10,13 @@ const { promisify } = require('util');
 libre.convertAsync = require('util').promisify(libre.convert);
 
 const app = express();
-app.use(cors());
+app.use(cors({
+  origin: [
+    'http://localhost:5173', 
+    'http://localhost:3000', 
+    'https://pdf-converter-sage-eta.vercel.app'
+  ]
+}));
 
 // Configure Multer for memory storage
 const storage = multer.memoryStorage();
