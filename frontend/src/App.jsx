@@ -40,7 +40,7 @@ function App() {
     formData.append('file', file);
 
     try {
-      const response = await axios.post('http://localhost:5000/api/convert', formData, {
+      const response = await axios.post('https://pdf-converter-3mmy.onrender.com/api/convert', formData, {
         responseType: 'blob', // Important for receiving binary PDF
         headers: {
           'Content-Type': 'multipart/form-data'
