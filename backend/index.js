@@ -33,7 +33,10 @@ const storage = multer.diskStorage({
     cb(null, file.fieldname + '-' + uniqueSuffix + path.extname(file.originalname));
   }
 });
-const upload = multer({ storage: storage });
+const upload = multer({ 
+  storage: storage,
+  limits: { fileSize: 100 * 1024 * 1024 } // 100MB limit
+});
 
 // Helper: Convert using Puppeteer (HTML/Text/Images)
 async function convertWithPuppeteer(htmlContent) {
@@ -182,6 +185,11 @@ app.post('/api/convert', upload.single('file'), async (req, res) => {
 });
 
 const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => {
+const server = app.listen(PORT, () => {
   console.log(`Backend server running on port ${PORT}`);
 });
+
+// Avoid "Request aborted" error on large file uploads by increasing the Node timeouts
+server.keepAliveTimeout = 600000; // 10 minutes
+server.headersTimeout = 600000;   // 10 minutes
+server.setTimeout(600000);        // 10 minutes
