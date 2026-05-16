@@ -38,13 +38,15 @@ const upload = multer({
   limits: { fileSize: 100 * 1024 * 1024 } // 100MB limit
 });
 
-// Helper: Convert using Puppeteer (HTML/Text/Images)
-async function convertWithPuppeteer(htmlContent) {
-  // Use dynamic import for ESM compatibility
+// Global browser logic to save massive amounts of RAM and prevent server crashes
+let globalBrowser = null;
+
+async function getBrowser() {
+  if (globalBrowser) return globalBrowser;
+
   const puppeteerModule = await import('puppeteer-core');
   const puppeteer = puppeteerModule.default || puppeteerModule;
 
-  // Use environment variable, default to Windows Edge for local testing, or Linux Chromium for Docker
   let executablePath = process.env.PUPPETEER_EXECUTABLE_PATH;
   if (!executablePath) {
     if (process.platform === 'win32') {
@@ -53,23 +55,34 @@ async function convertWithPuppeteer(htmlContent) {
       executablePath = '/usr/bin/chromium';
     }
   }
-  
-  const browser = await puppeteer.launch({
+
+  globalBrowser = await puppeteer.launch({
     headless: "new",
     executablePath: executablePath,
     args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'] 
   });
+  return globalBrowser;
+}
+
+// Helper: Convert using Puppeteer (HTML/Text/Images)
+async function convertWithPuppeteer(htmlContent) {
+  const browser = await getBrowser();
   const page = await browser.newPage();
-  page.setDefaultTimeout(0); // Disable timeouts
-  await page.setContent(htmlContent, { waitUntil: 'load', timeout: 0 });
-  const pdfBuffer = await page.pdf({ 
-    format: 'A4', 
-    printBackground: true, 
-    margin: { top: '20px', bottom: '20px', left: '20px', right: '20px' },
-    timeout: 0 
-  });
-  await browser.close();
-  return pdfBuffer;
+  
+  try {
+    page.setDefaultTimeout(0); // Disable timeouts
+    await page.setContent(htmlContent, { waitUntil: 'load', timeout: 0 });
+    const pdfBuffer = await page.pdf({ 
+      format: 'A4', 
+      printBackground: true, 
+      margin: { top: '20px', bottom: '20px', left: '20px', right: '20px' },
+      timeout: 0 
+    });
+    return pdfBuffer;
+  } finally {
+    // Only close the tab, do NOT kill the entire Chromium process
+    await page.close();
+  }
 }
 
 // Convert route
