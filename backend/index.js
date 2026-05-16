@@ -7,7 +7,6 @@ const path = require('path');
 const fs = require('fs');
 const { promisify } = require('util');
 const { PDFDocument } = require('pdf-lib');
-const { marked } = require('marked');
 
 libre.convertAsync = require('util').promisify(libre.convert);
 
@@ -109,6 +108,7 @@ app.post('/api/convert', upload.single('file'), async (req, res) => {
           htmlContent = textContent;
         } else if (ext === '.md') {
           // GitHub-style Markdown rendering for professional output
+          const { marked } = await import('marked');
           const parsedMd = marked.parse(textContent);
           htmlContent = `
             <!DOCTYPE html>
