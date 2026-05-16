@@ -141,9 +141,11 @@ app.post('/api/convert', upload.single('file'), async (req, res) => {
       pdfBuffer = await performConversion();
     } catch (firstError) {
       console.warn(`[Retry 1/1] First conversion attempt failed for ${originalname}: ${firstError.message}. Retrying...`);
+      console.error(firstError);
       try {
         pdfBuffer = await performConversion();
       } catch (secondError) {
+        console.error("Second attempt failed:", secondError);
         throw new Error(`Conversion failed after retry: ${secondError.message}`);
       }
     }
