@@ -37,35 +37,53 @@ function App() {
     setConversionState('converting');
     setErrorMsg('');
     
-    let hasError = false;
+    let failedFiles = [];
+    const MAX_RETRIES = 2; // Frontend Retry Limit
+
+    // Use deployed URL or local if not defined
+    const API_URL = import.meta.env.VITE_API_URL || 'https://pdf-converter-3mmy.onrender.com/api/convert';
 
     for (let i = 0; i < files.length; i++) {
        const file = files[i];
-       setProgressMsg(`Converting file ${i + 1} of ${files.length}: ${file.name}...`);
-       
-       const formData = new FormData();
-       formData.append('file', file);
+       let isSuccess = false;
 
-       try {
-         const response = await axios.post('https://pdf-converter-3mmy.onrender.com/api/convert', formData, {
-           responseType: 'blob', // Important for receiving binary PDF
-           headers: { 'Content-Type': 'multipart/form-data' }
-         });
-
-         const originalName = file.name || 'document';
-         const lastDot = originalName.lastIndexOf('.');
-         const baseName = lastDot !== -1 ? originalName.substring(0, lastDot) : originalName;
+       for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+         setProgressMsg(`Converting file ${i + 1} of ${files.length}: ${file.name} ${attempt > 1 ? `(Retry ${attempt}/${MAX_RETRIES}...)` : ''}`);
          
-         const blob = new Blob([response.data], { type: 'application/pdf' });
-         saveAs(blob, `${baseName}.pdf`);
-       } catch (err) {
-         console.error(`Failed to convert ${file.name}:`, err);
-         hasError = true;
+         const formData = new FormData();
+         formData.append('file', file);
+
+         try {
+           const response = await axios.post(API_URL, formData, {
+             responseType: 'blob', // Important for receiving binary PDF
+             headers: { 'Content-Type': 'multipart/form-data' },
+             timeout: 600000 // Ensure axios doesn't abort early (10 minutes)
+           });
+
+           const originalName = file.name || 'document';
+           const lastDot = originalName.lastIndexOf('.');
+           const baseName = lastDot !== -1 ? originalName.substring(0, lastDot) : originalName;
+           
+           const blob = new Blob([response.data], { type: 'application/pdf' });
+           saveAs(blob, `${baseName}.pdf`);
+           isSuccess = true;
+           break; // If successful, exit the retry loop
+         } catch (err) {
+           console.error(`Attempt ${attempt} failed for ${file.name}:`, err);
+           if (attempt < MAX_RETRIES) {
+             // Wait for 2 seconds before retrying
+             await new Promise(resolve => setTimeout(resolve, 2000));
+           }
+         }
+       }
+
+       if (!isSuccess) {
+         failedFiles.push(file.name);
        }
     }
 
-    if (hasError) {
-       setErrorMsg('Some files failed to convert. Please try again.');
+    if (failedFiles.length > 0) {
+       setErrorMsg(`Following files failed after retries: ${failedFiles.join(', ')}.`);
        setConversionState('error');
     } else {
        setConversionState('success');
