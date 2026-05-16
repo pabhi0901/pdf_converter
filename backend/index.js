@@ -56,8 +56,14 @@ async function convertWithPuppeteer(htmlContent) {
     args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'] 
   });
   const page = await browser.newPage();
-  await page.setContent(htmlContent, { waitUntil: 'load', timeout: 60000 });
-  const pdfBuffer = await page.pdf({ format: 'A4', printBackground: true, margin: { top: '20px', bottom: '20px', left: '20px', right: '20px' } });
+  page.setDefaultTimeout(0); // Disable timeouts
+  await page.setContent(htmlContent, { waitUntil: 'load', timeout: 0 });
+  const pdfBuffer = await page.pdf({ 
+    format: 'A4', 
+    printBackground: true, 
+    margin: { top: '20px', bottom: '20px', left: '20px', right: '20px' },
+    timeout: 0 
+  });
   await browser.close();
   return pdfBuffer;
 }
