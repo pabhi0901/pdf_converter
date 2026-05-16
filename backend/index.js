@@ -7,6 +7,7 @@ const path = require('path');
 const fs = require('fs');
 const { promisify } = require('util');
 const { PDFDocument } = require('pdf-lib');
+const { marked } = require('marked');
 
 libre.convertAsync = require('util').promisify(libre.convert);
 
@@ -101,19 +102,46 @@ app.post('/api/convert', upload.single('file'), async (req, res) => {
 
     const performConversion = async () => {
       if (textExtensions.includes(ext)) {
-        let htmlContent = buffer.toString('utf-8');
+        let textContent = buffer.toString('utf-8');
+        let htmlContent = '';
         
-        if (ext !== '.html') {
-           htmlContent = `
-           <!DOCTYPE html>
-           <html>
-           <head>
+        if (ext === '.html') {
+          htmlContent = textContent;
+        } else if (ext === '.md') {
+          // GitHub-style Markdown rendering for professional output
+          const parsedMd = marked.parse(textContent);
+          htmlContent = `
+            <!DOCTYPE html>
+            <html>
+            <head>
               <style>
-                 body { font-family: monospace; white-space: pre-wrap; word-wrap: break-word; }
+                body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; line-height: 1.6; color: #333; padding: 40px; margin: 0; }
+                code, pre { font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, Courier, monospace; background-color: #f6f8fa; border-radius: 6px; }
+                pre { padding: 16px; overflow: auto; font-size: 13px; line-height: 1.45; }
+                code { padding: 0.2em 0.4em; margin: 0; font-size: 85%; }
+                blockquote { border-left: 0.25em solid #dfe2e5; color: #6a737d; padding: 0 1em; margin-left: 0; }
+                table { border-collapse: collapse; width: 100%; margin-bottom: 16px; }
+                th, td { border: 1px solid #dfe2e5; padding: 6px 13px; }
+                tr:nth-child(2n) { background-color: #f6f8fa; }
+                h1, h2 { border-bottom: 1px solid #eaecef; padding-bottom: 0.3em; }
+                img { max-width: 100%; }
               </style>
-           </head>
-           <body>${htmlContent.replace(/</g, "&lt;").replace(/>/g, "&gt;")}</body>
-           </html>`;
+            </head>
+            <body>${parsedMd}</body>
+            </html>`;
+        } else {
+          // JSON, CSV, TXT, LOG - Professional Code View styling
+          htmlContent = `
+            <!DOCTYPE html>
+            <html>
+            <head>
+              <style>
+                body { font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, Courier, monospace; font-size: 13px; line-height: 1.5; color: #24292e; background-color: #ffffff; padding: 30px; margin: 0; }
+                pre { white-space: pre-wrap; word-wrap: break-word; tab-size: 4; margin: 0; }
+              </style>
+            </head>
+            <body><pre>${textContent.replace(/</g, "&lt;").replace(/>/g, "&gt;")}</pre></body>
+            </html>`;
         }
         return await convertWithPuppeteer(htmlContent);
 
