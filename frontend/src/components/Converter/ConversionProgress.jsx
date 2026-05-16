@@ -1,7 +1,7 @@
 import React from 'react';
 import { Loader2, CheckCircle2, AlertCircle, RefreshCcw } from 'lucide-react';
 
-const ConversionProgress = ({ status, error, onReset }) => {
+const ConversionProgress = ({ status, error, onReset, message }) => {
   return (
     <div className="glass-panel converting-state">
       {status === 'converting' && (
@@ -9,7 +9,7 @@ const ConversionProgress = ({ status, error, onReset }) => {
           <Loader2 size={64} className="spinner" />
           <div>
             <h3>Converting to PDF...</h3>
-            <p>Please wait while we process your file. This may take a moment for large documents.</p>
+            <p>{message || 'Please wait while we process your files...'}</p>
           </div>
         </>
       )}

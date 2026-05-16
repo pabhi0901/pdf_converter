@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import  { useState, useEffect } from 'react';
 import axios from 'axios';
 import { Settings, LogOut, FileText } from 'lucide-react';
 import Login from './components/Auth/Login';
@@ -13,6 +13,7 @@ function App() {
   const [showSettings, setShowSettings] = useState(false);
   const [conversionState, setConversionState] = useState('idle'); // 'idle', 'converting', 'success', 'error'
   const [errorMsg, setErrorMsg] = useState('');
+  const [progressMsg, setProgressMsg] = useState('');
 
   // Check auth on load
   useEffect(() => {
@@ -32,46 +33,42 @@ function App() {
     sessionStorage.removeItem('is_auth');
   };
 
-  const handleConvert = async (file) => {
+  const handleConvert = async (files) => {
     setConversionState('converting');
     setErrorMsg('');
+    
+    let hasError = false;
 
-    const formData = new FormData();
-    formData.append('file', file);
+    for (let i = 0; i < files.length; i++) {
+       const file = files[i];
+       setProgressMsg(`Converting file ${i + 1} of ${files.length}: ${file.name}...`);
+       
+       const formData = new FormData();
+       formData.append('file', file);
 
-    try {
-      const response = await axios.post('https://pdf-converter-3mmy.onrender.com/api/convert', formData, {
-        responseType: 'blob', // Important for receiving binary PDF
-        headers: {
-          'Content-Type': 'multipart/form-data'
-        }
-      });
+       try {
+         const response = await axios.post('https://pdf-converter-3mmy.onrender.com/api/convert', formData, {
+           responseType: 'blob', // Important for receiving binary PDF
+           headers: { 'Content-Type': 'multipart/form-data' }
+         });
 
-      const originalName = file.name || 'document';
-      const lastDot = originalName.lastIndexOf('.');
-      const baseName = lastDot !== -1 ? originalName.substring(0, lastDot) : originalName;
-      
-      const blob = new Blob([response.data], { type: 'application/pdf' });
-      saveAs(blob, `${baseName}.pdf`);
+         const originalName = file.name || 'document';
+         const lastDot = originalName.lastIndexOf('.');
+         const baseName = lastDot !== -1 ? originalName.substring(0, lastDot) : originalName;
+         
+         const blob = new Blob([response.data], { type: 'application/pdf' });
+         saveAs(blob, `${baseName}.pdf`);
+       } catch (err) {
+         console.error(`Failed to convert ${file.name}:`, err);
+         hasError = true;
+       }
+    }
 
-      setConversionState('success');
-    } catch (err) {
-      console.error(err);
-      let message = 'An unexpected error occurred.';
-      if (err.response && err.response.data instanceof Blob) {
-         // Attempt to read blob error message
-         const text = await err.response.data.text();
-         try {
-            const jsonError = JSON.parse(text);
-            message = jsonError.error || jsonError.details || message;
-         } catch(e) {
-            message = "Server returned an error.";
-         }
-      } else if (err.message) {
-         message = err.message;
-      }
-      setErrorMsg(message);
-      setConversionState('error');
+    if (hasError) {
+       setErrorMsg('Some files failed to convert. Please try again.');
+       setConversionState('error');
+    } else {
+       setConversionState('success');
     }
   };
 
@@ -108,6 +105,7 @@ function App() {
           <ConversionProgress 
             status={conversionState} 
             error={errorMsg} 
+            message={progressMsg}
             onReset={() => setConversionState('idle')} 
           />
         )}
