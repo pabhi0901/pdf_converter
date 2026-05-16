@@ -33,14 +33,39 @@ function App() {
     sessionStorage.removeItem('is_auth');
   };
 
-  const handleConvert = async (files) => {
+  const handleConvert = async (files, mergeFiles) => {
     setConversionState('converting');
     setErrorMsg('');
     
     let failedFiles = [];
 
     // Use deployed URL or local if not defined
-    const API_URL = import.meta.env.VITE_API_URL || 'https://pdf-converter-3mmy.onrender.com/api/convert';
+    const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+    
+    if (mergeFiles) {
+      setProgressMsg('Merging files into a single PDF...');
+      const ENDPOINT = `${API_URL}/api/convert-merge`;
+      const formData = new FormData();
+      files.forEach(file => formData.append('files', file));
+
+      try {
+        const response = await axios.post(ENDPOINT, formData, {
+          responseType: 'blob',
+          headers: { 'Content-Type': 'multipart/form-data' },
+          timeout: 600000
+        });
+        const blob = new Blob([response.data], { type: 'application/pdf' });
+        saveAs(blob, 'merged_document.pdf');
+        setConversionState('success');
+      } catch (err) {
+        console.error('Merge failed:', err);
+        setErrorMsg('Failed to merge files. Please try again.');
+        setConversionState('error');
+      }
+      return;
+    }
+
+    const ENDPOINT = `${API_URL}/api/convert-individual`;
 
     for (let i = 0; i < files.length; i++) {
        const file = files[i];
@@ -56,7 +81,7 @@ function App() {
          formData.append('file', file);
 
          try {
-           const response = await axios.post(API_URL, formData, {
+           const response = await axios.post(ENDPOINT, formData, {
              responseType: 'blob', // Important for receiving binary PDF
              headers: { 'Content-Type': 'multipart/form-data' },
              timeout: 600000 // Ensure axios doesn't abort early (10 minutes)

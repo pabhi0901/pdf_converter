@@ -28,9 +28,11 @@ const FileUploader = ({ onFileSelected }) => {
     'JPG', 'JPEG', 'PNG', 'WEBP', 'GIF', 'BMP'
   ];
 
+  const [mergeFiles, setMergeFiles] = useState(false);
+
   const handleConvert = () => {
     if (files.length > 0) {
-      onFileSelected(files); // Pass array of files
+      onFileSelected(files, mergeFiles); // Pass array of files and merge flag
     }
   };
 
@@ -82,10 +84,23 @@ const FileUploader = ({ onFileSelected }) => {
               </div>
             ))}
           </div>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '0.5rem', marginBottom: '0.5rem' }}>
+            <input 
+              type="checkbox" 
+              id="mergeFiles" 
+              checked={mergeFiles} 
+              onChange={(e) => setMergeFiles(e.target.checked)} 
+              style={{ cursor: 'pointer' }}
+            />
+            <label htmlFor="mergeFiles" style={{ cursor: 'pointer', fontSize: '1rem', fontWeight: 500 }}>
+              Merge all files into a single PDF
+            </label>
+          </div>
           
           <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '1rem' }}>
             <button className="btn-primary" onClick={handleConvert}>
-              Convert All to PDF
+              {mergeFiles ? 'Merge & Convert to PDF' : 'Convert All to PDF Individually'}
             </button>
           </div>
         </div>
