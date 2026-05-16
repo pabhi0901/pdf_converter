@@ -6,6 +6,7 @@ const libre = require('libreoffice-convert');
 const path = require('path');
 const fs = require('fs');
 const { promisify } = require('util');
+const { PDFDocument } = require('pdf-lib');
 
 libre.convertAsync = require('util').promisify(libre.convert);
 
@@ -114,22 +115,30 @@ app.post('/api/convert', upload.single('file'), async (req, res) => {
         return await convertWithPuppeteer(htmlContent);
 
       } else if (imageExtensions.includes(ext)) {
-        const base64Image = buffer.toString('base64');
-        const htmlContent = `
-          <!DOCTYPE html>
-          <html>
-          <head>
-            <style>
-              body { margin: 0; display: flex; justify-content: center; align-items: center; min-height: 100vh; }
-              img { max-width: 100%; max-height: 100%; object-fit: contain; }
-            </style>
-          </head>
-          <body>
-            <img src="data:${mimetype};base64,${base64Image}" />
-          </body>
-          </html>
-        `;
-        return await convertWithPuppeteer(htmlContent);
+        // Use pdf-lib for images (huge performance/size improvement over Puppeteer)
+        const pdfDoc = await PDFDocument.create();
+        let image;
+        if (ext === '.jpg' || ext === '.jpeg') {
+          image = await pdfDoc.embedJpg(buffer);
+        } else if (ext === '.png') {
+          image = await pdfDoc.embedPng(buffer);
+        } else {
+          // Fallback to Puppeteer for other formats like webp/gif/bmp
+          const base64Image = buffer.toString('base64');
+          return await convertWithPuppeteer(`<html><body style="margin:0;"><img src="data:${mimetype};base64,${base64Image}" style="max-width:100%;" /></body></html>`);
+        }
+        
+        const dims = image.scale(1);
+        const page = pdfDoc.addPage([dims.width, dims.height]);
+        page.drawImage(image, {
+          x: 0,
+          y: 0,
+          width: dims.width,
+          height: dims.height,
+        });
+        
+        const pdfBytes = await pdfDoc.save();
+        return Buffer.from(pdfBytes);
 
       } else if (officeExtensions.includes(ext)) {
         return await libre.convertAsync(buffer, '.pdf', undefined);
