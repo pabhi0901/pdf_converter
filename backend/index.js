@@ -18,8 +18,20 @@ app.use(cors({
   ]
 }));
 
-// Configure Multer for memory storage
-const storage = multer.memoryStorage();
+// Configure Multer for disk storage to handle large files
+const storage = multer.diskStorage({
+  destination: function (req, file, cb) {
+    const dir = path.join(__dirname, 'uploads');
+    if (!fs.existsSync(dir)){
+      fs.mkdirSync(dir, { recursive: true });
+    }
+    cb(null, dir);
+  },
+  filename: function (req, file, cb) {
+    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+    cb(null, file.fieldname + '-' + uniqueSuffix + path.extname(file.originalname));
+  }
+});
 const upload = multer({ storage: storage });
 
 // Helper: Convert using Puppeteer (HTML/Text/Images)
@@ -44,7 +56,7 @@ async function convertWithPuppeteer(htmlContent) {
     args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'] 
   });
   const page = await browser.newPage();
-  await page.setContent(htmlContent, { waitUntil: 'networkidle0' });
+  await page.setContent(htmlContent, { waitUntil: 'load', timeout: 60000 });
   const pdfBuffer = await page.pdf({ format: 'A4', printBackground: true, margin: { top: '20px', bottom: '20px', left: '20px', right: '20px' } });
   await browser.close();
   return pdfBuffer;
@@ -52,76 +64,82 @@ async function convertWithPuppeteer(htmlContent) {
 
 // Convert route
 app.post('/api/convert', upload.single('file'), async (req, res) => {
+  let uploadedFilePath = null;
   try {
     if (!req.file) {
       return res.status(400).json({ error: 'No file uploaded' });
     }
 
-    const { originalname, buffer, mimetype } = req.file;
+    uploadedFilePath = req.file.path;
+    const { originalname, mimetype } = req.file;
     const ext = path.extname(originalname).toLowerCase();
     
-    let pdfBuffer;
-
     console.log(`Processing file: ${originalname} (ext: ${ext}, mimetype: ${mimetype})`);
 
-    // 1. Types to process with Puppeteer (Text, Code, Images)
     const textExtensions = ['.txt', '.json', '.csv', '.xml', '.log', '.md', '.html'];
     const imageExtensions = ['.jpg', '.jpeg', '.png', '.webp', '.gif', '.bmp'];
-
-    if (textExtensions.includes(ext)) {
-      // Very basic Markdown to HTML conversion (you could add 'marked' for better MD)
-      let htmlContent = buffer.toString('utf-8');
-      
-      if (ext !== '.html') {
-         // Wrap plain text in a pre tag for monospace rendering
-         htmlContent = `
-         <!DOCTYPE html>
-         <html>
-         <head>
-            <style>
-               body { font-family: monospace; white-space: pre-wrap; word-wrap: break-word; }
-            </style>
-         </head>
-         <body>${htmlContent.replace(/</g, "&lt;").replace(/>/g, "&gt;")}</body>
-         </html>`;
-      }
-      pdfBuffer = await convertWithPuppeteer(htmlContent);
-
-    } else if (imageExtensions.includes(ext)) {
-      const base64Image = buffer.toString('base64');
-      const htmlContent = `
-        <!DOCTYPE html>
-        <html>
-        <head>
-          <style>
-            body { margin: 0; display: flex; justify-content: center; align-items: center; min-height: 100vh; }
-            img { max-width: 100%; max-height: 100%; object-fit: contain; }
-          </style>
-        </head>
-        <body>
-          <img src="data:${mimetype};base64,${base64Image}" />
-        </body>
-        </html>
-      `;
-      pdfBuffer = await convertWithPuppeteer(htmlContent);
-
-    } 
-    // 2. Types to process with LibreOffice (Office documents)
     const officeExtensions = ['.docx', '.pptx', '.xlsx', '.doc', '.ppt', '.xls'];
-    
-    if (officeExtensions.includes(ext)) {
-      try {
-        pdfBuffer = await libre.convertAsync(buffer, '.pdf', undefined);
-      } catch (libreErr) {
-        console.error("LibreOffice Conversion Error:", libreErr);
-        return res.status(500).json({ 
-          error: 'Office conversion failed. Ensure LibreOffice is installed on the server.',
-          details: libreErr.message 
-        });
-      }
-    } 
-    else {
+
+    if (!textExtensions.includes(ext) && !imageExtensions.includes(ext) && !officeExtensions.includes(ext)) {
+      if (uploadedFilePath && fs.existsSync(uploadedFilePath)) fs.unlinkSync(uploadedFilePath);
       return res.status(400).json({ error: 'Unsupported file format' });
+    }
+
+    // Read file buffer for processing (avoids storing the entire file in RAM repeatedly during upload)
+    const buffer = await fs.promises.readFile(uploadedFilePath);
+    let pdfBuffer;
+
+    const performConversion = async () => {
+      if (textExtensions.includes(ext)) {
+        let htmlContent = buffer.toString('utf-8');
+        
+        if (ext !== '.html') {
+           htmlContent = `
+           <!DOCTYPE html>
+           <html>
+           <head>
+              <style>
+                 body { font-family: monospace; white-space: pre-wrap; word-wrap: break-word; }
+              </style>
+           </head>
+           <body>${htmlContent.replace(/</g, "&lt;").replace(/>/g, "&gt;")}</body>
+           </html>`;
+        }
+        return await convertWithPuppeteer(htmlContent);
+
+      } else if (imageExtensions.includes(ext)) {
+        const base64Image = buffer.toString('base64');
+        const htmlContent = `
+          <!DOCTYPE html>
+          <html>
+          <head>
+            <style>
+              body { margin: 0; display: flex; justify-content: center; align-items: center; min-height: 100vh; }
+              img { max-width: 100%; max-height: 100%; object-fit: contain; }
+            </style>
+          </head>
+          <body>
+            <img src="data:${mimetype};base64,${base64Image}" />
+          </body>
+          </html>
+        `;
+        return await convertWithPuppeteer(htmlContent);
+
+      } else if (officeExtensions.includes(ext)) {
+        return await libre.convertAsync(buffer, '.pdf', undefined);
+      }
+    };
+
+    // Retry mechanism
+    try {
+      pdfBuffer = await performConversion();
+    } catch (firstError) {
+      console.warn(`[Retry 1/1] First conversion attempt failed for ${originalname}: ${firstError.message}. Retrying...`);
+      try {
+        pdfBuffer = await performConversion();
+      } catch (secondError) {
+        throw new Error(`Conversion failed after retry: ${secondError.message}`);
+      }
     }
 
     // Send the resulting PDF back
@@ -131,7 +149,18 @@ app.post('/api/convert', upload.single('file'), async (req, res) => {
 
   } catch (error) {
     console.error('Conversion Error:', error);
-    res.status(500).json({ error: 'Failed to convert file', details: error.message });
+    if (!res.headersSent) {
+      res.status(500).json({ error: 'Failed to convert file', details: error.message });
+    }
+  } finally {
+    // Clean up uploaded file from disk to prevent storage leaks
+    if (uploadedFilePath && fs.existsSync(uploadedFilePath)) {
+      try {
+        fs.unlinkSync(uploadedFilePath);
+      } catch (cleanupError) {
+        console.error('Failed to clean up file:', cleanupError.message);
+      }
+    }
   }
 });
 

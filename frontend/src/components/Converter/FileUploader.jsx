@@ -16,9 +16,9 @@ const FileUploader = ({ onFileSelected }) => {
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
     multiple: true,
-    maxSize: 50 * 1024 * 1024, // 50MB max
+    maxSize: 100 * 1024 * 1024, // 100MB max
     onDropRejected: () => {
-      setError('File is too large or invalid. Max size is 50MB.');
+      setError('File is too large or invalid. Max size is 100MB.');
     }
   });
 
