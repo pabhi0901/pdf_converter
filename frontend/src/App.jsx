@@ -38,7 +38,6 @@ function App() {
     setErrorMsg('');
     
     let failedFiles = [];
-    const MAX_RETRIES = 2; // Frontend Retry Limit
 
     // Use deployed URL or local if not defined
     const API_URL = import.meta.env.VITE_API_URL || 'https://pdf-converter-3mmy.onrender.com/api/convert';
@@ -46,9 +45,12 @@ function App() {
     for (let i = 0; i < files.length; i++) {
        const file = files[i];
        let isSuccess = false;
+       
+       const isLastFile = i === files.length - 1;
+       const maxRetriesThisFile = isLastFile ? 5 : 2; // Give the last file up to 5 tries, others 2
 
-       for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
-         setProgressMsg(`Converting file ${i + 1} of ${files.length}: ${file.name} ${attempt > 1 ? `(Retry ${attempt}/${MAX_RETRIES}...)` : ''}`);
+       for (let attempt = 1; attempt <= maxRetriesThisFile; attempt++) {
+         setProgressMsg(`Converting file ${i + 1} of ${files.length}: ${file.name} ${attempt > 1 ? `(Retry ${attempt}/${maxRetriesThisFile}...)` : ''}`);
          
          const formData = new FormData();
          formData.append('file', file);
@@ -70,7 +72,7 @@ function App() {
            break; // If successful, exit the retry loop
          } catch (err) {
            console.error(`Attempt ${attempt} failed for ${file.name}:`, err);
-           if (attempt < MAX_RETRIES) {
+           if (attempt < maxRetriesThisFile) {
              // Wait for 2 seconds before retrying
              await new Promise(resolve => setTimeout(resolve, 2000));
            }
@@ -79,6 +81,12 @@ function App() {
 
        if (!isSuccess) {
          failedFiles.push(file.name);
+       }
+
+       // Smart Server Cooldown: Wait 2 seconds before throwing the next file at the server (except very last upload)
+       if (i < files.length - 1) {
+         setProgressMsg(`Waiting 2 sec to free server memory before next file...`);
+         await new Promise(resolve => setTimeout(resolve, 2000));
        }
     }
 
